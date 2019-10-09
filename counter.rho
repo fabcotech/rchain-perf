@@ -1,0 +1,21 @@
+new basket, counter,incrementCounter, incrementCounterCh, insertArbitrary(`rho:registry:insertArbitrary`), stdout(`rho:io:stdout`) in {
+
+  counter!(0) |
+
+  contract incrementCounter(message) = {
+    for (@current <- counter) {
+      counter!(current + 1)
+    }
+  } |
+
+  insertArbitrary!(*incrementCounter, *incrementCounterCh) |
+
+  for (uri <- incrementCounterCh) {
+    basket!({
+      "registry_uri": *uri,
+      "unforgeable_name": *counter
+    })
+  } |
+
+  stdout!(*basket)
+}
