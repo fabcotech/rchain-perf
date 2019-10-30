@@ -1,0 +1,26 @@
+new
+  basket,
+  rl(`rho:registry:lookup`), RevVaultCh,
+  vaultCh, balanceCh,
+  stdout(`rho:io:stdout`)
+in {
+
+  rl!(`rho:rchain:revVault`, *RevVaultCh) |
+  for (@(_, RevVault) <- RevVaultCh) {
+
+    // REPLACE THE REV ADDRESS HERE vvv
+    match "%FROM" {
+      revAddress => {
+        @RevVault!("findOrCreate", revAddress, *vaultCh) |
+        for (@(true, vault) <- vaultCh) {
+
+          @vault!("balance", *balanceCh) |
+
+          for (@balance <- balanceCh) {
+            basket!(balance)
+          }
+        }
+      }
+    }
+  }
+}

@@ -3,13 +3,14 @@ const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
 const rchainToolkit = require("rchain-toolkit");
 
-const { host, port, privateKey, publicKey } = require("./constants");
+const { host, port, privateKey, publicKey, to, from } = require("./constants");
 const { getProcessArgv, log, buildUnforgeableNameQuery } = require("./utils");
 
+let balance;
 let startTime;
 const launch = async () => {
-  const counterFile = fs.readFileSync(`counter.rho`, "utf8");
-
+  const transferFundsFile = fs.readFileSync(`transfer_funds.rho`, "utf8").replace('%FROM', from).replace('%TO', to);
+  const checkBalanceFile = fs.readFileSync('check_balance.rho', 'utf8').replace('%FROM', from);
   log("host : " + host);
   log("port : " + port);
 
@@ -58,7 +59,7 @@ const launch = async () => {
   const deployData = await rchainToolkit.utils.getDeployData(
     "secp256k1",
     timestamp,
-    counterFile,
+    checkBalanceFile,
     privateKey,
     publicKey,
     1,
@@ -92,28 +93,24 @@ const launch = async () => {
     listenForDataAtNameResponse.payload.blockInfo
   );
 
-  const jsObject = rchainToolkit.utils.rhoValToJs(
+  balance = rchainToolkit.utils.rhoValToJs(
     data
   );
 
-  const counterUnforgeableNameQuery = buildUnforgeableNameQuery(
-    jsObject.unforgeable_name[0].gPrivate
-  );
+  log("initial balance is : " + balance);
 
-  log("incrementCh registry uri : " + jsObject.registry_uri);
-  log("counter unforgeable name : " + jsObject.unforgeable_name[0].gPrivate);
   let i = 0;
   startTime = new Date().getTime();
   setInterval(() => {
     if (i < stopAfter) {
-      deployAndCheckCounter(
+      deployAndCheckBalance(
         grpcClient,
         grpcProposeClient,
         i,
-        counterUnforgeableNameQuery,
         perSecond,
-        jsObject.registry_uri,
-        i === stopAfter - 1
+        transferFundsFile,
+        checkBalanceFile,
+        i === stopAfter -1
       );
       i += 1;
     }
@@ -122,13 +119,13 @@ const launch = async () => {
 
 launch();
 
-const deployAndCheckCounter = async (
+const deployAndCheckBalance = async (
   grpcClient,
   grpcProposeClient,
   i,
-  counterUnforgeableNameQuery,
   perSecond,
-  registryUri,
+  transferFundsFile,
+  checkBalanceFile,
   last
 ) => {
   log(i + 1 + "th round");
@@ -136,12 +133,7 @@ const deployAndCheckCounter = async (
   const deploys = [];
   const timestamp = new Date().valueOf();
   for (let j = 0; j < perSecond; j += 1) {
-    const term = `new incrementCounterCh, lookup(\`rho:registry:lookup\`) in {
-      lookup!(\`${registryUri}\`, *incrementCounterCh) |
-      for(update <- incrementCounterCh) {
-        update!("INCREMENT")
-      }
-    }`;
+    const term = transferFundsFile;
     const deployData = rchainToolkit.utils.getDeployData(
       "secp256k1",
       timestamp + j,
@@ -173,32 +165,69 @@ const deployAndCheckCounter = async (
       if (seconds % 5 === 0) {
         log("seconds % 5 === 0 , will propose");
         const proposeAndCheck = () => {
-          rchainToolkit.grpc.propose({}, grpcProposeClient).then(p => {
+          rchainToolkit.grpc.propose({}, grpcProposeClient).then(async p => {
             if (!p.error) {
               log(`propose for ${seconds}th round succesfull`);
               if (last || (seconds % 10 === 0)) {
-                log(seconds + "th round, will check counter");
+                log(seconds + "th round, will check balance");
+                const timestamp = new Date().valueOf();
+                const privateNamePreviewResponse = await rchainToolkit.grpc.previewPrivateNames(
+                  {
+                    user: Buffer.from(publicKey, "hex"),
+                    timestamp: timestamp,
+                    nameQty: 1
+                  },
+                  grpcClient
+                )
+
+                const basketPrivateName = rchainToolkit.utils.unforgeableWithId(
+                  privateNamePreviewResponse.payload.ids[0]
+                );
+
+                const deployData = await rchainToolkit.utils.getDeployData(
+                  "secp256k1",
+                  timestamp,
+                  checkBalanceFile,
+                  privateKey,
+                  publicKey,
+                  1,
+                  1000000,
+                  -1
+                );
+                
+                const deployResponse = await rchainToolkit.grpc.doDeploy(
+                  deployData,
+                  grpcClient
+                );
+
+                await rchainToolkit.grpc.propose({}, grpcProposeClient);
+
+                const unforgeableNameQuery = buildUnforgeableNameQuery(basketPrivateName);
+              
                 const checkValue = async () => {
                   const listenForDataAtNameResponse = await rchainToolkit.grpc.listenForDataAtName(
                     {
-                      name: counterUnforgeableNameQuery,
+                      name: unforgeableNameQuery,
                       depth: 1000
                     },
                     grpcClient
-                  )
-
+                  );
+                  
                   const data = rchainToolkit.utils.getValueFromBlocks(
                     listenForDataAtNameResponse.payload.blockInfo
                   );
-
+                
+                  const value = rchainToolkit.utils.rhoValToJs(data);
+    
                   console.log("\n");
                   log("==== ");
                   log(
                     `value at ${seconds} seconds is ${
-                      data.exprs[0].g_int
-                    } and should be ${seconds * perSecond} (${seconds * perSecond} deploys sent, ${seconds / 10} proposes)`
+                      value
+                    } and should be ${balance - (seconds * perSecond)} (${seconds * perSecond} deploys sent, ${seconds / 10} proposes)`
                   );
-                  if (parseInt(data.exprs[0].g_int) !== seconds * perSecond) {
+                  
+                  if (parseInt(value) !== balance - (seconds * perSecond)) {
                     log(
                       "error : value on chain does not equal the predicted value"
                     );
@@ -209,9 +238,10 @@ const deployAndCheckCounter = async (
                     log(`success : rnode is synced with the deploys, ${seconds * perSecond} deploys processed in ${(new Date().getTime() - startTime) / 1000} seconds`)
                   }
                   log("====\n");
-
                 }
+
                 checkValue();
+
               }
             } else {
               log("error when proposing");
@@ -219,7 +249,7 @@ const deployAndCheckCounter = async (
               if (last) {
                 setTimeout(() => {
                   proposeAndCheck();
-                }, 1000)
+                }, 1000);
               }
             }
           });
