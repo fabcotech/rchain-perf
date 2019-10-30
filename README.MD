@@ -5,6 +5,13 @@ Check the `contants.js` file if you want to connect to a GRPC API other than `lo
 Use the `--per-second` parameter to control the number of deploy that are done each seconds (and bring your machine/network down :D ).
 Use the `--stop-after` parameter to stop the test after n seconds, make sure this number is a multiple of 5. AFter the test is over, the program will check the value onchain until it is the right value. This allows send a huge number of deploys in a short period, and know the time it takes for the node/network to process it.
 
+
+```
+git clone https://github.com/fabcotech/rchain-perf.git
+cd rchain-perf
+npm i
+```
+
 ### Counter test
 
 A number is stored on a channel, and incremented at each deploys.
