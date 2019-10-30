@@ -34,7 +34,7 @@ You must have rnode running with REV balances with high number, like 1000000 .
 
 You can use the `addrFromPublicKey.js` file to obtain REV and ETH addresses from public keys.
 
-The `from` value in `constants.js` must be the REV address that matches with the `publicKey` and `privateKey`. This address must have REVS.
+Check the `constante.js` file for the `from` and `to` values, they must be REV addresses. The `from` value in `constants.js` must be the REV address that matches with the `publicKey` and `privateKey`. This address must have REVS.
 
 Bob sends 1 rev to Alice at each deploy.
 - A block is proposed each 5 seconds.
