@@ -13,6 +13,6 @@
     "base-58": "0.0.1",
     "blakejs": "^1.1.0",
     "js-sha3": "^0.8.0",
-    "rchain-toolkit": "0.1.6"
+    "rchain-toolkit": "0.2.0"
   }
 }
