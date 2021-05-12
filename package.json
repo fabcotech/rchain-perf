@@ -8,7 +8,7 @@
   "scripts": {},
   "license": "MIT",
   "dependencies": {
-    "@grpc/grpc-js": "^0.5.0",
+    "@grpc/grpc-js": "^1.1.8",
     "@grpc/proto-loader": "^0.5.1",
     "base-58": "0.0.1",
     "blakejs": "^1.1.0",
